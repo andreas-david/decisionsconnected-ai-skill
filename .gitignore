@@ -1,0 +1,8 @@
+# Schlüssel und lokale Einstellungen gehören nie in dieses Repository
+.claude/settings.local.json
+.env
+.env.*
+*.key
+__pycache__/
+*.pyc
+.DS_Store
