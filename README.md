@@ -4,7 +4,7 @@ Ein Skill für [Claude Code](https://claude.com/claude-code) (und kompatible Wer
 
 *English: A skill that lets an AI assistant read, draft, comment on and link decisions in a DecisionsConnected project. Humans decide. German-language documentation.*
 
-Version 1.0.0 · Lizenz MIT
+Version 1.1.0 · Lizenz MIT
 
 ## Was du brauchst
 - Ein Projekt in DecisionsConnected und die Rolle **Projektleitung**.
@@ -55,6 +55,13 @@ Die Inhalte eines Projekts gehen an den Anbieter deiner KI. Im Modus *pseudonymi
 - `decisionsconnected/scripts/dc.py`: Befehle für die Schnittstelle (`python3 scripts/dc.py --help`)
 - `decisionsconnected/references/`: Schnittstelle, Leitfaden für gute Entscheidungen, Verknüpfungstypen
 - `install.sh`: kopiert den Skill in ein Projekt
+
+## Aktualisieren
+```bash
+cd decisionsconnected-ai-skill && git pull
+./install.sh /pfad/zum/projekt
+```
+`install.sh` ersetzt nur den Skill-Ordner; dein Schlüssel in `.claude/settings.local.json` bleibt. Neue Versionen und Änderungen stehen in [CHANGELOG.md](CHANGELOG.md). Das Skript `dc.py` weist selbst darauf hin, wenn es eine neuere Version gibt: Es ruft dafür höchstens einmal am Tag die Datei `VERSION` von GitHub ab (dabei sieht GitHub deine IP-Adresse) und installiert nichts. Abschalten: Umgebungsvariable `DC_NO_UPDATE_CHECK=1`. Wer eine feste Version will, klont mit `git clone --branch v1.1.0 …`.
 
 ## Lizenz
 MIT, siehe [LICENSE](LICENSE). Die Lizenz gilt für diesen Skill, nicht für den Dienst DecisionsConnected (eigene Bedingungen) und nicht für den Namen „DecisionsConnected" oder das Logo.

@@ -5,16 +5,18 @@ Der Schlüssel kommt aus der Umgebungsvariable DC_API_TOKEN (nie als Argument, n
 Jeder Befehl entspricht genau einem Endpunkt der Schnittstelle /v1 (siehe references/api.md). Nur die Standardbibliothek.
 """
 import argparse
+import atexit
 import hashlib
 import json
 import os
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 BASE = os.environ.get("DC_API_URL", "https://api.decisionsconnected.com").rstrip("/")
 
 HINTS = {
@@ -26,6 +28,54 @@ HINTS = {
     "not_logged_in": "Der Schlüssel ist ungültig, gelöscht oder der KI-Zugang der Firma ist aus (DC_API_TOKEN prüfen).",
     "too_many_attempts": "Zu viele Anfragen. Kurz warten.",
 }
+
+
+REPO = "https://github.com/andreas-david/decisionsconnected-ai-skill"
+VERSION_URL = os.environ.get("DC_UPDATE_URL", "https://raw.githubusercontent.com/andreas-david/decisionsconnected-ai-skill/main/VERSION")
+
+
+def _ver(v):
+    try:
+        return tuple(int(x) for x in v.strip().split("."))
+    except ValueError:
+        return (0,)
+
+
+def update_hint():
+    """Höchstens einmal am Tag die neueste Skill-Version abfragen (nur die Datei VERSION) und bei einem neueren Stand einen Hinweis ausgeben.
+    Installiert nichts, sendet nichts außer dem Abruf. Abschalten: DC_NO_UPDATE_CHECK=1."""
+    if os.environ.get("DC_NO_UPDATE_CHECK"):
+        return
+    base = os.environ.get("DC_CACHE_DIR") or os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"), "decisionsconnected-skill")
+    state = os.path.join(base, "update.json")
+    latest, checked, noted = None, 0, 0
+    try:
+        with open(state, encoding="utf-8") as f:
+            d = json.load(f)
+        latest, checked, noted = d.get("latest"), float(d.get("checked", 0)), float(d.get("noted", 0))
+    except Exception:
+        pass
+    if time.time() - checked > 86400:
+        try:
+            req = urllib.request.Request(VERSION_URL, headers={"User-Agent": "dc-skill/" + __version__})
+            with urllib.request.urlopen(req, timeout=2, context=ssl_context()) as r:
+                got = r.read(64).decode("utf-8", "replace").strip()
+            if len(got.split(".")) == 3 and all(x.isdigit() for x in got.split(".")):
+                latest = got
+        except Exception:
+            pass  # kein Netz oder kein Zugriff: still bleiben
+        checked = time.time()
+    newer = bool(latest) and _ver(latest) > _ver(__version__)
+    show = newer and time.time() - noted > 86400  # der Hinweis kommt höchstens einmal am Tag
+    try:
+        os.makedirs(base, exist_ok=True)
+        with open(state, "w", encoding="utf-8") as f:
+            json.dump({"latest": latest, "checked": checked, "noted": time.time() if show else noted}, f)
+    except Exception:
+        pass
+    if show:
+        print("Hinweis: Skill-Update verfügbar (installiert %s, neu %s). Dem Nutzer mitteilen; nicht selbst installieren. "
+              "Aktualisieren: im Klon des Skills `git pull` und `install.sh <projekt>` ausführen. Änderungen: %s/blob/main/CHANGELOG.md" % (__version__, latest, REPO), file=sys.stderr)
 
 
 def ssl_context():
@@ -83,6 +133,7 @@ def out(data, compact=False):
 
 
 def main():
+    atexit.register(update_hint)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version="dc.py " + __version__)
     sub = ap.add_subparsers(dest="cmd", required=True)

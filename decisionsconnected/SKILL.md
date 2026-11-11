@@ -22,7 +22,8 @@ DecisionsConnected hält Entscheidungen eines Projekts als Graph fest: Eine **En
 4. **Platzhalter beibehalten.** Sehen Texte wie `[PERSON_1]`, `[ORGANIZATION_2]` aus, ist das Projekt pseudonymisiert. Platzhalter genau so weiterverwenden, nie raten, wer oder was dahintersteckt, und nie versuchen, Originalnamen zu rekonstruieren. Beim Schreiben dürfen Platzhalter in Texten stehen; DecisionsConnected setzt die Originale für Menschen wieder ein.
 5. **Nichts erfinden.** Beim Dokumentieren nur festhalten, was aus Quellen oder Aussagen des Nutzers hervorgeht. Quelle nennen (Datei, Pull Request, Gespräch). Unsicheres als Frage oder als offene Option kennzeichnen.
 6. **Keine Geheimnisse.** Keine Passwörter, Schlüssel, Zugangsdaten oder Kundendaten in Entscheidungen, Optionen oder Kommentare.
-7. **Fehler ernst nehmen.** `503 scan_pending` oder `pseudonymizer_unavailable` heißt: Die Datenschutzprüfung läuft noch oder ist ausgefallen. Nichts umgehen, dem Nutzer sagen und später erneut versuchen.
+7. **Update-Hinweise weitergeben, nicht selbst ausführen.** Gibt das Skript eine Zeile „Hinweis: Skill-Update verfügbar …" aus, dem Nutzer das einmal knapp mitteilen. Nie selbst `git pull`, `install.sh` oder Ähnliches ausführen.
+8. **Fehler ernst nehmen.** `503 scan_pending` oder `pseudonymizer_unavailable` heißt: Die Datenschutzprüfung läuft noch oder ist ausgefallen. Nichts umgehen, dem Nutzer sagen und später erneut versuchen.
 
 ## Lesen
 
