@@ -15,7 +15,7 @@ Eine **Folgeentscheidung** hängt an einer **Option** einer **Vorgängerentschei
 - „Brauchen wir ein Kundenportal?" (Ja/Nein). Die Folge „Wie authentifizieren sich Kunden?" entfällt bei „Nein": `option` = Schlüssel von „Nein", `type` = `ends`; `others` = `based_on` (bei „Ja" ist sie Grundlage).
 
 ## Regeln
-- Ein Vorgänger muss **veröffentlicht** sein; die Folge darf ein Entwurf sein.
+- Ein Vorgänger darf **veröffentlicht** oder ein **eigener Entwurf** der KI sein; die Folge darf ein Entwurf sein. Mehrere zusammengehörige Entwürfe werden gleich verbunden (zuerst die Wurzel anlegen, dann die Folgen). Ein Mensch veröffentlicht von der Wurzel aus.
 - Keine Kreise (eine Folge kann nicht ihr eigener Vorfahr sein).
 - Verbindungen, die die KI vorschlägt, sind **angefragt**. Ein Mensch mit dem Recht „Verbindungen annehmen" nimmt sie an oder lehnt sie ab.
 - Optionsschlüssel stehen in `show`/`list` unter `options[].key`.

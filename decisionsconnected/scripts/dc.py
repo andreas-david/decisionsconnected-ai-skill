@@ -6,9 +6,11 @@ Jeder Befehl entspricht genau einem Endpunkt der Schnittstelle /v1 (siehe refere
 """
 import argparse
 import atexit
+import difflib
 import hashlib
 import json
 import os
+import re
 import ssl
 import sys
 import time
@@ -16,7 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 BASE = os.environ.get("DC_API_URL", "https://api.decisionsconnected.com").rstrip("/")
 
 HINTS = {
@@ -122,6 +124,87 @@ def idem(*parts):
     return hashlib.sha256(json.dumps(parts, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:40]
 
 
+STOP = set("""wie welche welcher welches welchen welchem wir uns unser unsere der die das den dem des ein eine einen einem einer und oder mit von auf für fuer im in an am zu zum zur bei nach vor
+ist sind wird werden soll sollen sollten wollen wollen muss müssen kann können darf dürfen nehmen nutzen verwenden benutzen wählen entscheiden setzen legen machen geben
+wann warum wo was wer wozu damit dann nur auch noch schon später jetzt neu neue""".split())
+
+
+def _norm(t):
+    return re.sub(r"[^a-z0-9äöüß ]+", " ", (t or "").lower()).split()
+
+
+def _content(t):
+    return {w for w in _norm(t) if w not in STOP and len(w) > 2}
+
+
+def similar(title, options, c):
+    """Ähnlichkeit einer vorhandenen Entscheidung c zur geplanten Frage (0 bis 1): Schreibweise des Titels, gemeinsame Inhaltswörter und Optionen."""
+    a, b = " ".join(_norm(title)), " ".join(_norm(c["title"]))
+    t = difflib.SequenceMatcher(None, a, b).ratio()
+    ca, cb = _content(title), _content(c["title"])
+    cw = len(ca & cb) / len(ca | cb) if (ca and cb) else 0
+    mine = {" ".join(_norm(o)) for o in options}
+    theirs = {" ".join(_norm(o["title"])) for o in c.get("options", [])}
+    j = len(mine & theirs) / len(mine | theirs) if (mine | theirs) else 0
+    return max(t, 0.5 * t + 0.5 * j if j else 0, cw if cw >= 0.6 else 0, 0.6 * cw + 0.4 * j if (cw >= 0.4 and j >= 0.3) else 0)
+
+
+def cmd_ask(a):
+    """Entscheidungsbedarf melden, ohne Rückfrage: Gibt es die Frage schon, kommt die vorhandene Entscheidung zurück; sonst entsteht ein Entwurf fürs Team."""
+    options = [o.strip() for o in (a.option or []) if o.strip()]
+    if len(options) < 2:
+        sys.exit("Fehler: Mindestens zwei Optionen angeben (--option), auch „Beim Bisherigen bleiben“ oder „Nichts tun“.")
+    title = a.title.strip()
+    if not title.endswith("?"):
+        title += "?"
+    if not a.force:
+        existing = call("GET", "/v1/decisions", query={"limit": 500})["decisions"]
+        hits = sorted(((similar(title, options, c), c) for c in existing), key=lambda x: -x[0])
+        hits = [(r, c) for r, c in hits if r >= 0.72][:3]
+        if hits:
+            out({"result": "exists", "matches": [{"key": c["key"], "status": c["status"], "title": c["title"], "acceptedOption": c.get("acceptedOption"),
+                                                   "options": [o["title"] for o in c.get("options", [])], "similarity": round(r, 2), "url": c["url"]} for r, c in hits],
+                 "advice": "Gibt es die Frage schon? Ist sie entschieden, ist die gewählte Option bindend. Ist sie offen oder ein Entwurf, nicht doppelt anlegen: bei neuem Kontext mit `comment KEY --text …` ergänzen und mit einer dokumentierten Annahme weiterarbeiten oder den Zweig pausieren. Nur wenn es wirklich eine andere Frage ist, mit --force trotzdem anlegen."})
+            return
+    parts = [a.context.strip()] if a.context else []
+    if a.source:
+        parts.append("Quelle: " + a.source.strip())
+    parts.append("Blockiert Arbeit: " + ("ja" if a.blocking else "nein") + ".")
+    if a.assume:
+        parts.append("Annahme bis zur Entscheidung: " + a.assume.strip())
+    parts.append("Gestellt von einem autonomen KI-Agenten. Bitte prüfen, veröffentlichen und entscheiden.")
+    body = {"title": title, "description": "\n\n".join(parts), "options": [{"title": o} for o in options]}
+    if a.thread:
+        body["thread"] = a.thread
+    if a.due:
+        body["dueDate"] = a.due
+    parents = []
+    for p in a.parent or []:
+        bits = p.split(":")
+        if len(bits) < 2:
+            sys.exit("Fehler: --parent erwartet VORGÄNGER:OPTION[:TYP].")
+        parents.append({"decision": bits[0], "option": bits[1], "type": bits[2] if len(bits) > 2 else "based_on", "others": "no_effect"})
+    if parents:
+        body["parents"] = parents
+    body["idempotencyKey"] = idem("ask", body)
+    r = call("POST", "/v1/drafts", body)
+    out({"result": "drafted", "draft": r["draft"], "assumption": a.assume or None, "blocking": bool(a.blocking),
+         "advice": "Die Frage liegt als Entwurf beim Projektteam (Verantwortliche sehen sie unter „Braucht dich“). Entscheiden darf nur ein Mensch. Arbeite " +
+                   ("vorläufig mit der genannten Annahme weiter und halte sie im Ergebnis fest" if a.assume and not a.blocking else "an anderem weiter und pausiere diesen Zweig" if a.blocking else "an anderem weiter") +
+                   ". Später mit `answer %s` nachsehen." % r["draft"]["key"]})
+
+
+def cmd_answer(a):
+    """Hat das Team entschieden? Liefert den Stand einer Frage."""
+    d = call("GET", "/v1/decision", query={"key": a.key})
+    x = d["decision"]
+    res = {"key": x["key"], "title": x["title"], "status": x["status"], "decided": x["status"] == "decided", "acceptedOption": x.get("acceptedOption"),
+           "reason": x.get("reason"), "needsReview": x.get("needsReview"), "url": x["url"]}
+    res["advice"] = ("Entschieden: Die gewählte Option ist jetzt bindend, richte die Arbeit danach aus (und passe frühere Annahmen an)." if res["decided"]
+                     else "Noch nicht entschieden (Status %s). Weiter mit der dokumentierten Annahme oder pausieren; später erneut nachsehen." % x["status"])
+    out(res)
+
+
 def out(data, compact=False):
     if compact and isinstance(data.get("decisions"), list):
         for c in data["decisions"]:
@@ -153,6 +236,13 @@ def main():
     p = sub.add_parser("link", help="Verbindung vorschlagen (bleibt angefragt, bis ein Mensch sie annimmt)")
     p.add_argument("--child", required=True); p.add_argument("--parent", required=True); p.add_argument("--option", required=True, help="Schlüssel der Option des Vorgängers")
     p.add_argument("--type", default="based_on", choices=["based_on", "check", "no_effect", "blocks", "ends"]); p.add_argument("--others", default="no_effect", choices=["based_on", "check", "no_effect", "blocks", "ends"])
+    p = sub.add_parser("ask", help="Entscheidungsbedarf melden (ohne Rückfrage): vorhandene Entscheidung finden oder Entwurf fürs Team anlegen")
+    p.add_argument("--title", required=True, help="die Frage"); p.add_argument("--option", action="append", help="eine Option (mindestens zwei)")
+    p.add_argument("--context", default="", help="Kontext: worum geht es, warum jetzt"); p.add_argument("--source", help="Quelle: Datei, PR, Aufgabe")
+    p.add_argument("--assume", help="Annahme, mit der vorläufig weitergearbeitet wird"); p.add_argument("--blocking", action="store_true", help="die Frage blockiert die Arbeit")
+    p.add_argument("--parent", action="append", help="VORGÄNGER:OPTION[:TYP], mehrfach möglich"); p.add_argument("--thread"); p.add_argument("--due", help="JJJJ-MM-TT")
+    p.add_argument("--force", action="store_true", help="auch anlegen, wenn eine ähnliche Frage existiert")
+    p = sub.add_parser("answer", help="Hat das Team entschieden? Stand einer Frage"); p.add_argument("key")
     a = ap.parse_args()
 
     if a.cmd == "projects":
@@ -187,6 +277,10 @@ def main():
             body["option"] = a.option
         body["idempotencyKey"] = idem("comment", body)
         out(call("POST", "/v1/comments", body))
+    elif a.cmd == "ask":
+        cmd_ask(a)
+    elif a.cmd == "answer":
+        cmd_answer(a)
     elif a.cmd == "link":
         out(call("POST", "/v1/links", {"child": a.child, "parent": a.parent, "option": a.option, "type": a.type, "others": a.others}))
 

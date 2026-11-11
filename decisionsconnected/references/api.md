@@ -38,7 +38,7 @@ Alle Schreibaufrufe akzeptieren `idempotencyKey` (Text, bis 100 Zeichen): Eine W
   ]
 }
 ```
-Pflicht: `title`. `thread` nur sinnvoll an Startkarten (ohne `parents`). Bis zu 12 Optionen, 5 Vorgänger. Der Vorgänger muss veröffentlicht sein. Antwort: `draft` (`key`, `status: "draft"`, `url`, `links`), `next`. Verantwortlich ist die Person, die die KI ins Projekt geholt hat. Ein Mensch prüft und veröffentlicht.
+Pflicht: `title`. `thread` nur sinnvoll an Startkarten (ohne `parents`). Bis zu 12 Optionen, 5 Vorgänger. Ein Vorgänger darf veröffentlicht sein oder ein eigener Entwurf der KI (so lassen sich mehrere Entwürfe gleich untereinander verbinden). Ein Mensch kann eine Folge erst veröffentlichen, wenn ihre Vorgänger veröffentlicht sind. Antwort: `draft` (`key`, `status: "draft"`, `url`, `links`), `next`. Verantwortlich ist die Person, die die KI ins Projekt geholt hat. Ein Mensch prüft und veröffentlicht.
 
 ### `option` → `POST /v1/options` (Recht `draft`)
 `{"decision": "<Entwurf der KI>", "title": "…", "description": "…"}`. Nur an eigenen, noch nicht veröffentlichten Entwürfen.
@@ -48,6 +48,9 @@ Pflicht: `title`. `thread` nur sinnvoll an Startkarten (ohne `parents`). Bis zu 
 
 ### `link` → `POST /v1/links` (Recht `draft`)
 `{"child": "<Folge>", "parent": "<Vorgänger>", "option": "<Option des Vorgängers>", "type": "based_on", "others": "no_effect"}`. Bleibt „angefragt", bis ein Mensch sie annimmt.
+
+### `ask` und `answer` (Befehle des Skripts)
+Keine eigenen Endpunkte, sondern Zusammensetzungen: `ask` sucht über `GET /v1/decisions` ähnliche Entscheidungen (Titel und Optionen, ab 0,72 Ähnlichkeit) und legt sonst über `POST /v1/drafts` einen Entwurf an (Beschreibung mit Kontext, Quelle, „Blockiert Arbeit“, Annahme). `answer` liest `GET /v1/decision`. Antworten: `result` (`exists` oder `drafted`), bei `exists` die Treffer mit `acceptedOption`, bei `drafted` der Entwurf mit `url`.
 
 ## Grenzen
 - Je KI höchstens 30 Entwürfe/Optionen/Verbindungen und 60 Kommentare je Stunde (`429 too_many_attempts`).
